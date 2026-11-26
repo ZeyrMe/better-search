@@ -132,7 +132,13 @@ class Plugin(MaiBotPlugin):
                     async with client.stream(
                         "POST" if payload is not None else "GET",
                         pinned,
-                        headers={**(headers or {}), "User-Agent": self.config.user_agent, "Host": authority},
+                        # IP-based origins must not share a pooled TLS connection across hostnames.
+                        headers={
+                            **(headers or {}),
+                            "User-Agent": self.config.user_agent,
+                            "Host": authority,
+                            "Connection": "close",
+                        },
                         extensions={"sni_hostname": hostname},
                         json=payload,
                         timeout=self.config.timeout_seconds,
@@ -142,9 +148,11 @@ class Plugin(MaiBotPlugin):
                             if hop == 5 or not response.headers.get("location"):
                                 raise ValueError("重定向次数过多或缺少地址")
                             next_url = canonical_url(urljoin(current, response.headers["location"]))
-                            if (headers or payload is not None) and urlsplit(next_url).netloc != urlsplit(
-                                current
-                            ).netloc:
+                            origin = urlsplit(current)
+                            destination = urlsplit(next_url)
+                            if (headers or payload is not None) and (
+                                (destination.scheme, destination.netloc) != (origin.scheme, origin.netloc)
+                            ):
                                 raise ValueError("携带凭据的请求不允许跨站重定向")
                             if response.status_code in (301, 302, 303):
                                 payload = None

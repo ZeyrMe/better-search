@@ -174,3 +174,31 @@ async def test_tavily_adapter_uses_json_post(plugin, monkeypatch):
     assert result["available"]
     assert calls == [{"api_key": "instance-key", "query": "hello", "max_results": 5}]
     assert result["results"][0]["snippet"] == "summary"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("location", ["http://public.example/search", "https://other.example/search"])
+async def test_api_credentials_do_not_follow_scheme_or_origin_changes(plugin, monkeypatch, location):
+    import socket
+
+    import httpx
+
+    calls = []
+    monkeypatch.setattr(
+        module.socket,
+        "getaddrinfo",
+        lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.215.14", 443))],
+    )
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(307, headers={"location": location})
+
+    plugin.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(ValueError, match="凭据"):
+            await plugin.request("https://public.example/search", payload={"api_key": "instance-key"})
+    finally:
+        await plugin.on_unload()
+    assert len(calls) == 1
+    assert calls[0].headers["connection"] == "close"

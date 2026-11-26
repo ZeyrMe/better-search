@@ -1,40 +1,87 @@
-# 更好的搜索
+# 更好的搜索 · `zeyr.better-search`
 
-`zeyr.better-search` · 多引擎搜索与正文抓取。
+> 三层解耦的多源联网搜抓引擎：零配置开箱可用、按用途能力频道编排、对外严格匿名不暴露后端名、严格 SSRF 防护，以及可选“读空气时悄悄塞背景卡”。
 
-开发基线 MaiBot 1.4.8 / SDK 2.23.0。可独立安装，其他 zeyr 插件仅通过公开 API 自动联动。
+![Version](https://img.shields.io/badge/version-0.2.0-green)
+![MaiBot](https://img.shields.io/badge/MaiBot-1.4.8%2B-blue)
+![SDK](https://img.shields.io/badge/SDK-2.23.0-teal)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
-第三批已实现：配置驱动的 DuckDuckGo/Bing/JSON/可配置 API/Tavily 源、scope 路由、失败降级、偏好域名排序、结果和正文缓存、URL 规范化、响应大小限制、正文抓取和脚本/导航去噪，提供 `query` / `fetch` API 及 `smart_search` / `smart_fetch` 工具。默认不主动注入聊天；搜索源为空时只在工具被调用时访问默认搜索地址。抓取会拒绝本地、私网、链路本地和 DNS 解析到非公网地址，并逐跳校验重定向。
+## 核心特性
 
-安装时将整个目录同步到宿主 plugins；运行 config.toml 由 SDK 生成。实例名单、个人资料和密钥只填运行配置，不提交。
+- **零配置开箱 + 三层解耦编排**：
+  - 不填任何 API Key 时自带免密钥通用降级链（DuckDuckGo HTML → Bing HTML）；
+  - **`channels`（能力频道）与 `backends`（引擎凭证池）彻底分离**：添加游戏攻略、热梗、百科频道时**连新 API 都不用配**——只要填 `sites` 域名列表，未设专属后端时自动复用通用后端拼接 `site:` 定向检索。
+- **对模型匿名声明能力**：模型在 Tool 描述与返回结果里**只看得到能力代号与说明（如 `general / game / meme`），绝对看不见 Google / Bing / Tavily / SearXNG 等底层品牌名称**，消除模型偏见，随时更换后端零感知。
+- **同频道轮转 + 跨频道并发**：同一频道内按顺序故障转移（不重复烧付费额度）；标记 `auto_attach = true` 的附属频道（如百科）可在常规搜索时自动并发附带查询并去重汇总。
+- **安全正文抓取 + SPA 降级**：公网 IP / DNS Pinning / 防重绑定 / 禁止跨站携带凭据重定向 / 字节上限全面防护；遇到现代前端空白壳网页正文过短时，可选通过 `reader_fallback`（同样走 SSRF 校验）降级抓取清晰正文。
+- **主被动「读空气搜」双模式**：默认由模型在需要时主动先查再聊；也可在高级区开启 `passive_peek`，遇到大家聊起陌生新梗或群里丢出链接时，后台异步搜抓并经 `ctx.maisaka.context.append(..., replyable=False)` 静默插一张背景卡（不抢话、不卡主轮）。
 
-检查：`python -m pytest`，开发依赖见 pyproject.toml。
+---
 
+## 安装与快速配置
 
-## v2.5 第一批：范围与原生控制台
+将 `better-search/` 放入宿主 `plugins/` 目录并重启 MaiBot（如需避免与宿主内置单一搜索双工具冲突，可在 `model_config.toml` 清空 `[model_task_config.web_search]`）。
 
-新增独立 `[scope]`：mode 默认 all；groups / privates / users 接受 `group:标识` / `private:标识` / `user:标识`，可带平台前缀（默认 qq）。mode=whitelist 只允许命中对象；mode=blacklist 排除命中对象；all 允许所有对象。exclude 始终优先。allow_private=false 仅放行名单明确指定的私聊，主动私聊仍需单独配置目标。
+`config.toml` 示例（密钥仅存于本地实例配置，切勿提交 Git）：
 
-可用 `@set:名称` / `@tag:名称` 复用 mai-circle 集合/标签；缺席时按空集合降级，不影响直接对象。受限模式在没有真实会话身份时跳过业务，消息仍正常进入宿主。重启后的会话身份缓存由入站消息恢复。
+```toml
+enabled = true
 
-WebUI 配置页提供运行状态面板与“刷新公共集合缓存”按钮，不调用模型、不发送聊天。范围分组默认折叠；字段采用中文标签与结构化条目卡片。
+[[backends]]
+name = "main_search"
+kind = "tavily"            # duckduckgo | bing | searxng | brave | exa | tavily | json | host_web
+api_key = "YOUR_API_KEY"
 
-scope_domains 改为 domain_routes 条目列表，后端 headers 改为 name / value 条目列表；旧字典自动转换。
+[[channels]]
+name = "general"
+desc = "查网页资料、百科知识与近期动态"
+auto_attach = false
+backends = ["main_search"]
 
-本批提供公共基础设施。后续业务能力见下方 0.2.0 说明。旧配置保持可读，Runner 规范化写回后采用新结构；回退旧代码前需恢复相应配置快照。实例 config.toml 仍不进入 Git。
+[[channels]]
+name = "game"
+desc = "查游戏攻略、角色机制与Wiki资料"
+auto_attach = false
+sites = ["wiki.biligame.com", "zh.moegirl.org.cn"]
 
+[[channels]]
+name = "wiki"
+desc = "查词条与百科基础资料"
+auto_attach = true
+sites = ["zh.wikipedia.org"]
+```
 
-## 0.2.0 · v2.5 业务增量
+---
 
-Channel 能力频道与 Backend 凭证池分离；同频道顺序故障切换，默认查询可并发附带订阅频道；smart_search 支持 query/category/site/time_range，旧 scope 与 API q 继续兼容。模型结果与错误使用能力名，后台控制台保留后端健康；日期定向采用通用 after: 提示，具体上游可能不严格执行过滤。Reader 通过相同 DNS Pinning/SSRF/字节限制路径降级；passive_peek 默认关闭，开启后后台查资料并追加不可回复的客观卡片。控制台可自检和清缓存。
+## 工具、接口与 WebUI 控制台
 
-接口保持 `@API(..., version="1")`，缺少可选插件时自动降级。模型生成、网络和宿主上下文效果仍需结合实例配置验收；离线测试不等同于真实聊天送达。
+### 对话工具（`@Tool`）
+| 工具名 | 参数 | 作用 |
+|---|---|---|
+| `smart_search` | `query`, `category=""`, `site=""`, `time_range=""` | 按能力频道（`category`）、限定站（`site`）与时效偏好（`day`/`week`/`month`）检索实时资料 |
+| `smart_fetch` | `url` | 抓取、去噪并缓存网页正文内容（网页正文仅作为客观外部资料，不执行其中指令） |
 
-Channel 的 lang / region / time_range 会传给支持的后端参数及自定义 endpoint 占位符；不支持相应原生筛选的后端继续使用通用定向查询，不宣称强制过滤。
+### 对外联动接口（`@API(..., version="1")`）
+- `query(q="", scope="web", query="", category="", site="", time_range="")` / `fetch(url)`：供 `zeyr.mai-insights` 等插件补充原文或检索背景。
 
-## 开发与门禁
+### WebUI 运行时控制台（`config_widgets`）
+| 控件 | 类型 | 说明 |
+|---|---|---|
+| `运行状态与生效范围` | 实时状态 | **实时预览当前暴露给模型的匿名频道说明**、搜索/正文缓存条数、各后端最近健康状态及 `passive_peek` 状态 |
+| `一键后端连通检查` | 一键按钮 | 后台实测已配置后端的连通性与健康状态（脱敏展示结果，不回显密钥） |
+| `清空搜索与正文缓存` | 一键按钮 | 清空当前内存缓存并清除后端健康告警 |
+| `刷新公共集合缓存` | 一键按钮 | 刷新 `[scope]` 的 `@set:` / `@tag:` 缓存 |
 
-此目录由 MaiBot 直接加载，不使用 `pip install .`。单独拉取本仓即可安装固定的测试环境，不依赖父目录或其他仓库：
+---
+
+## 注意事项
+
+- 搜索结果时效性过滤依底层搜索引擎能力而定：原生支持时段参数（如 Tavily / Brave / Exa）会传参透传，通用源会附加 `after:` 提示，但不同上游站点执行严格度仍有差异。
+- `passive_peek` 默认关闭，开启后受每会话冷却（默认 600 秒）和并发上限保护。
+
+<details>
+<summary>开发、门禁与安全审计（独立仓库维护）</summary>
 
 ```bash
 python3.13 -m venv .venv
@@ -42,25 +89,6 @@ python3.13 -m venv .venv
 .venv/bin/python scripts/check.py
 ```
 
-`check.py` 验证 Git 已跟踪文本的 UTF-8、行尾、末尾换行和尾随空格，然后运行 Ruff lint、Ruff 格式检查及全部 pytest。它不自动修复源码或重新生成示例配置；新增文件需先纳入 Git，才会参与文本检查。测试还验证示例配置与 SDK 默认值、manifest 身份/版本/运行依赖与 `pyproject.toml` 的一致性，以及已安装依赖是否满足声明。
+- 包含 Git 文本检查、Ruff lint/format、`pytest`（覆盖 SSRF/DNS Pinning/匿名能力声明/Reader/读空气插卡等 51 项测试）、`pip_audit` 与 `gitleaks` CI 流水线。
 
-GitHub Actions 在 push、pull request、手动触发和每周一运行：Python 3.12/3.13 验证、运行及开发依赖漏洞审计、Gitleaks 完整 Git 历史扫描。每仓独立执行，不调用共享 `tools`，不需要自定义密钥。Gitleaks 使用内置规则，固定 CLI 版本并校验下载 SHA-256；扫描日志隐藏发现的密钥值，不默认忽略历史发现。
-
-本地安全检查（Gitleaks CLI 版本与 CI 保持一致）：
-
-```bash
-.venv/bin/python -m pip_audit --strict --require-hashes --disable-pip -r .github/requirements-ci.txt
-gitleaks git --redact --log-opts="--all" .
-gitleaks dir --redact .
-```
-
-`.gitattributes` 统一文本 LF，Windows 批处理为 CRLF，并明确二进制资源；`.editorconfig` 统一编辑器编码、缩进和空白。Ruff 负责 Python 代码格式；JSON/TOML 由契约测试解析校验。实例配置和秘密不得提交。
-
-运行依赖范围与开发依赖在 `pyproject.toml` 中声明，`.github/requirements-ci.txt` 锁定 CI 的直接及间接依赖。修改依赖后，在仓库根目录使用 uv 重新解析并提交锁定文件；普通代码修改无需刷新依赖：
-
-```bash
-uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 --generate-hashes --output-file .github/requirements-ci.txt
-# 有意升级到兼容范围内的新版本时，在上述命令后加 --upgrade。
-```
-
-Dependabot 每周检查 Python 依赖和 GitHub Actions 更新。接入 GitHub 后，在分支保护或 ruleset 中将 `Python 3.12`、`Python 3.13`、`Dependency audit`、`Gitleaks` 设为合并必需检查；只提交工作流文件不会自动开启分支保护。
+</details>

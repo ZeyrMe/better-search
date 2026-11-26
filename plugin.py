@@ -293,12 +293,12 @@ class Plugin(EcosystemMixin, MaiBotPlugin):
             if isinstance(row, dict) and row.get("url")
         ]
 
-    async def search_backend(self, query, scope="web", selected=None):
+    async def search_backend(self, query, scope="web", selected=None, lang="", region="", time_range=""):
         if not self.config.enabled:
             raise ValueError("插件已禁用")
         if not query.strip() or len(query) > 2000:
             raise ValueError("query 需要 1–2000 字")
-        key = ("search", query.strip(), scope, tuple(selected or []))
+        key = ("search", query.strip(), scope, tuple(selected or []), lang, region, time_range)
         cached = self.cached(key)
         if cached is not None:
             return cached
@@ -318,7 +318,39 @@ class Plugin(EcosystemMixin, MaiBotPlugin):
                     if rows:
                         break
                     continue
-                url = source.endpoint.format(query=quote(query, safe=""), scope=quote(scope, safe=""))
+                url = source.endpoint.format(
+                    query=quote(query, safe=""),
+                    scope=quote(scope, safe=""),
+                    lang=quote(lang, safe=""),
+                    region=quote(region, safe=""),
+                    time_range=quote(time_range, safe=""),
+                )
+                params = {}
+                if source.kind == "bing":
+                    params = {key: value for key, value in {"setlang": lang, "cc": region}.items() if value}
+                elif source.kind == "duckduckgo" and region and lang:
+                    params["kl"] = region.lower() + "-" + lang.lower().split("-")[0]
+                elif source.kind == "brave":
+                    params = {
+                        key: value
+                        for key, value in {
+                            "search_lang": lang,
+                            "country": region,
+                            "freshness": {"day": "pd", "week": "pw", "month": "pm"}.get(time_range, ""),
+                        }.items()
+                        if value
+                    }
+                elif source.kind == "searxng":
+                    params = {
+                        key: value
+                        for key, value in {
+                            "language": lang,
+                            "time_range": time_range if time_range in ("day", "month") else "",
+                        }.items()
+                        if value
+                    }
+                if params:
+                    url = str(httpx.URL(url).copy_merge_params(params))
                 headers, payload = {row.name: row.value for row in source.headers}, None
                 if source.api_key and source.kind == "brave":
                     headers["X-Subscription-Token"] = source.api_key
@@ -332,6 +364,8 @@ class Plugin(EcosystemMixin, MaiBotPlugin):
                         "query": query,
                         "max_results": self.config.max_results,
                     }
+                    if time_range:
+                        payload["time_range"] = time_range
                 body, _, _ = await self.request(url, headers=headers, payload=payload)
                 rows = (
                     self.parse_html_results(body, source.kind, source.name)
@@ -420,7 +454,12 @@ class Plugin(EcosystemMixin, MaiBotPlugin):
                 )
                 directed += " after:" + since.date().isoformat()
             value = await self.search_backend(
-                directed, channel.name if channel.name != "general" else scope, channel.backends or None
+                directed,
+                channel.name if channel.name != "general" else scope,
+                channel.backends or None,
+                lang=channel.lang,
+                region=channel.region,
+                time_range=period,
             )
             for row in value["results"]:
                 row["source"] = channel.name

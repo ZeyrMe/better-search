@@ -29,3 +29,5 @@ scope_domains 改为 domain_routes 条目列表，后端 headers 改为 name / v
 Channel 能力频道与 Backend 凭证池分离；同频道顺序故障切换，默认查询可并发附带订阅频道；smart_search 支持 query/category/site/time_range，旧 scope 与 API q 继续兼容。模型结果与错误使用能力名，后台控制台保留后端健康；日期定向采用通用 after: 提示，具体上游可能不严格执行过滤。Reader 通过相同 DNS Pinning/SSRF/字节限制路径降级；passive_peek 默认关闭，开启后后台查资料并追加不可回复的客观卡片。控制台可自检和清缓存。
 
 接口保持 `@API(..., version="1")`，缺少可选插件时自动降级。模型生成、网络和宿主上下文效果仍需结合实例配置验收；离线测试不等同于真实聊天送达。
+
+Channel 的 lang / region / time_range 会传给支持的后端参数及自定义 endpoint 占位符；不支持相应原生筛选的后端继续使用通用定向查询，不宣称强制过滤。

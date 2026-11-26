@@ -61,3 +61,31 @@ async def test_background_peek_appends_context_without_sending():
     await p.peek({"session_id": "s", "processed_plain_text": "https://news.example/a"}, "s")
     assert p.ctx.maisaka.context.append.await_args.kwargs["replyable"] is False
     assert p.ctx.maisaka.context.append.await_args.kwargs["source_kind"] == "search_peek"
+
+
+async def test_channel_language_region_and_period_reach_supported_backend():
+    p = module.Plugin()
+    p.set_plugin_config(
+        {
+            "plugin": {"config_version": "0.1.0"},
+            "channels": [{"name": "general", "lang": "zh", "region": "CN", "time_range": "week"}],
+            "backends": [
+                {
+                    "name": "credential-slot",
+                    "kind": "brave",
+                    "endpoint": "https://search.example/query?q={query}",
+                }
+            ],
+        }
+    )
+    p.request = AsyncMock(
+        return_value=(
+            b'{"results":[{"url":"https://news.example/a","title":"x"}]}',
+            "utf-8",
+            "application/json",
+        )
+    )
+    value = await p.search("test")
+    url = p.request.await_args.args[0]
+    assert "search_lang=zh" in url and "country=CN" in url and "freshness=pw" in url
+    assert value["results"][0]["source"] == "general"

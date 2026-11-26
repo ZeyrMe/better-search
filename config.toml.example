@@ -6,7 +6,34 @@ preferred_domains = []
 timeout_seconds = 8.0
 max_results = 5
 cache_minutes = 30
+max_cache_entries = 128
 max_body_chars = 12000
+max_response_bytes = 2000000
+user_agent = "zeyr-better-search/0.1"
 
 [plugin]
 config_version = "0.1.0"
+
+[scope_domains]
+
+[[default_sources]]
+name = "duckduckgo"
+kind = "duckduckgo"
+endpoint = "https://html.duckduckgo.com/html/?q={query}"
+api_key = ""
+domains = []
+scopes = []
+enabled = true
+
+[default_sources.headers]
+
+[[default_sources]]
+name = "bing"
+kind = "bing"
+endpoint = "https://www.bing.com/search?q={query}"
+api_key = ""
+domains = []
+scopes = []
+enabled = true
+
+[default_sources.headers]

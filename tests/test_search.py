@@ -18,16 +18,16 @@ def test_clean_text_removes_script_and_navigation():
 
 @pytest.mark.asyncio
 async def test_json_source_fallback_and_cache(plugin, monkeypatch):
-    plugin.config.sources = [
-        module.config_models.SearchSource(name="local", kind="json", endpoint="https://x.test?q={query}")
-    ]
+    from test_better_search.config_models import SearchSource
+
+    plugin.config.sources = [SearchSource(name="local", kind="json", endpoint="https://x.test?q={query}")]
     calls = []
 
-    def fake_fetch(url, timeout):
+    async def fake_request(url, *, headers=None, payload=None):
         calls.append(url)
         return b'{"results":[{"title":"A","url":"https://example.com/a"}]}', "utf-8", "application/json"
 
-    monkeypatch.setattr(module, "fetch_url", fake_fetch)
+    monkeypatch.setattr(plugin, "request", fake_request)
     first = await plugin.search("hello")
     second = await plugin.search("hello")
     assert first["results"][0]["title"] == "A"
@@ -39,3 +39,10 @@ async def test_json_source_fallback_and_cache(plugin, monkeypatch):
 async def test_fetch_rejects_non_http(plugin):
     result = await plugin.fetch("file:///etc/passwd")
     assert not result["success"]
+
+
+def test_canonical_url_drops_tracking_query():
+    assert (
+        module.canonical_url("https://Example.com/a?utm_source=x&keep=1#fragment")
+        == "https://Example.com/a?keep=1"
+    )

@@ -1,7 +1,29 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
 from conftest import module
+
+
+@pytest.mark.parametrize("period", ["", "any", "day", "week", "month"])
+async def test_channel_time_range_legacy_config_roundtrip_and_backend_value(period):
+    p = module.Plugin()
+    original = {
+        "plugin": {"config_version": "0.1.0"},
+        "channels": [{"name": "general", "time_range": period}],
+    }
+    p.set_plugin_config(original)
+    stored = p.get_plugin_config_data()
+    assert stored["channels"][0]["time_range"] == (period or "any")
+    assert original["channels"][0]["time_range"] == period
+    p.set_plugin_config(stored)
+    p.search_backend = AsyncMock(return_value={"results": [], "degraded": False, "errors": []})
+    await p.search("test")
+    expected = "" if period in ("", "any") else period
+    assert p.search_backend.await_args.kwargs["time_range"] == expected
+    assert (" after:" in p.search_backend.await_args.args[0]) == bool(expected)
+    await p.search("test", time_range="day")
+    assert p.search_backend.await_args.kwargs["time_range"] == "day"
 
 
 async def test_channel_fanout_directed_query_and_anonymous_results():

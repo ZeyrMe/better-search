@@ -45,7 +45,7 @@ class Channel(PluginConfigBase):
     auto_attach: bool = Field(default=False, description="默认通用查询时自动并行附带")
     sites: list[str] = Field(default_factory=list, description="域名列表；自动拼接 site: 定向")
     backends: list[str] = Field(default_factory=list, description="按顺序引用凭证池后端名；空复用通用后端")
-    time_range: Literal["", "day", "week", "month"] = Field(default="", description="默认时效")
+    time_range: Literal["any", "day", "week", "month"] = Field(default="any", description="默认时效")
     lang: str = Field(default="", description="偏好语言")
     region: str = Field(default="", description="偏好地区")
 
@@ -112,13 +112,19 @@ class Config(PluginConfigBase):
     @model_validator(mode="before")
     @classmethod
     def normalize_legacy(cls, values):
-        if isinstance(values, dict) and "scope_domains" in values and "domain_routes" not in values:
-            values = {
-                **values,
-                "domain_routes": [
+        if isinstance(values, dict):
+            values = dict(values)
+            if "scope_domains" in values and "domain_routes" not in values:
+                values["domain_routes"] = [
                     {"scope": scope, "domains": domains} for scope, domains in values["scope_domains"].items()
-                ],
-            }
+                ]
+            if isinstance(values.get("channels"), list):
+                values["channels"] = [
+                    {**channel, "time_range": "any"}
+                    if isinstance(channel, dict) and channel.get("time_range") == ""
+                    else channel
+                    for channel in values["channels"]
+                ]
         return values
 
     @model_validator(mode="after")

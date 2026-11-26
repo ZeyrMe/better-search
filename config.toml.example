@@ -33,7 +33,7 @@ desc = "通用互联网资料和实时事实"
 auto_attach = false
 sites = []
 backends = []
-time_range = ""
+time_range = "any"
 lang = ""
 region = ""
 

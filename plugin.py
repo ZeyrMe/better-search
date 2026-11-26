@@ -446,6 +446,8 @@ class Plugin(EcosystemMixin, MaiBotPlugin):
             directed = query + (f" ({expression})" if expression else "")
             # Adapter-neutral hint; retain originals and do not promise upstream-specific filters.
             period = time_range or channel.time_range
+            if period == "any":
+                period = ""
             if period:
                 from datetime import datetime, timedelta, timezone
 

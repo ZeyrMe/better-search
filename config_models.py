@@ -7,23 +7,51 @@ from .ecosystem import ScopeConfig
 
 
 class Header(PluginConfigBase):
-    name: str = Field(default="", description="请求头名")
-    value: str = Field(default="", description="请求头内容；密钥只填写在实例")
+    name: str = Field(
+        default="",
+        description="HTTP 请求头名称。",
+        json_schema_extra={"label": "请求头名", "placeholder": "例如 X-API-Key"},
+    )
+    value: str = Field(
+        default="",
+        description="请求头内容；密钥只保存在本地实例里。",
+        json_schema_extra={"label": "请求头值", "input_type": "password"},
+    )
 
 
 class DomainRoute(PluginConfigBase):
-    scope: str = Field(default="web", description="搜索能力范围名")
-    domains: list[str] = Field(default_factory=list, description="偏好域名")
+    scope: str = Field(default="web", description="搜索能力范围名", json_schema_extra={"label": "范围名"})
+    domains: list[str] = Field(
+        default_factory=list, description="偏好域名", json_schema_extra={"label": "偏好域名"}
+    )
 
 
 class SearchSource(PluginConfigBase):
-    name: str = Field(default="", description="来源名")
-    kind: Literal["duckduckgo", "bing", "json", "searxng", "brave", "exa", "tavily", "host_web"] = Field(
-        default="json", description="搜索适配器"
+    name: str = Field(
+        default="",
+        description="给这个搜索源起个方便编排引用的代号。",
+        json_schema_extra={"label": "后端代号", "placeholder": "例如 my_tavily"},
     )
-    endpoint: str = Field(default="", description="搜索地址模板，支持 {query} 和 {scope}")
-    api_key: str = Field(default="", description="API 密钥，仅实例配置")
-    headers: list[Header] = Field(default_factory=list, description="额外请求头条目")
+    kind: Literal["duckduckgo", "bing", "json", "searxng", "brave", "exa", "tavily", "host_web"] = Field(
+        default="json",
+        description="接入协议类型，选 host_web 可直接复用宿主自带搜索。",
+        json_schema_extra={"label": "接口类型"},
+    )
+    endpoint: str = Field(
+        default="",
+        description="搜索接口地址模板，支持 {query} 占位；免 Key 默认源和 host_web 可按默认填写。",
+        json_schema_extra={"label": "接口地址", "placeholder": "https://search.example.com/search?q={query}"},
+    )
+    api_key: str = Field(
+        default="",
+        description="API 密钥（仅存在本地 config.toml）。",
+        json_schema_extra={"label": "API 密钥", "input_type": "password"},
+    )
+    headers: list[Header] = Field(
+        default_factory=list,
+        description="需要额外携带的请求头。",
+        json_schema_extra={"label": "附加请求头"},
+    )
 
     @field_validator("headers", mode="before")
     @classmethod
@@ -34,41 +62,136 @@ class SearchSource(PluginConfigBase):
             else value
         )
 
-    domains: list[str] = Field(default_factory=list, description="此源优先处理的域名")
-    scopes: list[str] = Field(default_factory=list, description="此源适用的 scope；空表示全部")
-    enabled: bool = Field(default=True, description="启用")
+    domains: list[str] = Field(
+        default_factory=list,
+        description="该后端优先照顾的网站域名。",
+        json_schema_extra={"label": "优先域名", "hidden": True},
+    )
+    scopes: list[str] = Field(
+        default_factory=list,
+        description="限定适用的范围，留空表示全部可用。",
+        json_schema_extra={"label": "适用范围", "hidden": True},
+    )
+    enabled: bool = Field(
+        default=True,
+        description="是否启用这个搜索后端。",
+        json_schema_extra={"label": "启用"},
+    )
 
 
 class Channel(PluginConfigBase):
-    name: str = Field(default="general", description="能力频道名；向模型展示")
-    desc: str = Field(default="通用互联网资料和实时事实", description="能力说明；不填后端名称")
-    auto_attach: bool = Field(default=False, description="默认通用查询时自动并行附带")
-    sites: list[str] = Field(default_factory=list, description="域名列表；自动拼接 site: 定向")
-    backends: list[str] = Field(default_factory=list, description="按顺序引用凭证池后端名；空复用通用后端")
-    time_range: Literal["any", "day", "week", "month"] = Field(default="any", description="默认时效")
-    lang: str = Field(default="", description="偏好语言")
-    region: str = Field(default="", description="偏好地区")
+    name: str = Field(
+        default="general",
+        description="对外暴露的能力代号（比如 general、game、meme、wiki）。",
+        json_schema_extra={"label": "频道代号", "placeholder": "例如 game"},
+    )
+    desc: str = Field(
+        default="查网页资料、百科知识与近期动态",
+        description="只用来告诉模型「这个频道擅长查什么」，不要写谷歌/必应/Tavily 等真实引擎名。",
+        json_schema_extra={"label": "能力说明", "placeholder": "例如 查游戏攻略、角色机制与官方公告"},
+    )
+    auto_attach: bool = Field(
+        default=False,
+        description="打开后，每次常规搜索都会自动顺带把这路频道一起查了。",
+        json_schema_extra={"label": "默认顺带查"},
+    )
+    sites: list[str] = Field(
+        default_factory=list,
+        description="只要填网站域名就行，没配专属后端时会自动用通用搜索拼站点限定来查。",
+        json_schema_extra={"label": "限定网站", "placeholder": "例如 wiki.biligame.com"},
+    )
+    backends: list[str] = Field(
+        default_factory=list,
+        description="按优先顺序填后端代号（先失败再切下一个）；留空就自动复用默认通用后端。",
+        json_schema_extra={"label": "指定后端", "placeholder": "留空即复用默认后端"},
+    )
+    time_range: Literal["any", "day", "week", "month"] = Field(
+        default="any",
+        description="偏好的信息新旧范围。",
+        json_schema_extra={"label": "时效偏好"},
+    )
+    lang: str = Field(
+        default="",
+        description="偏好搜索语言代码，如 zh 或 en。",
+        json_schema_extra={"label": "偏好语言", "placeholder": "例如 zh"},
+    )
+    region: str = Field(
+        default="",
+        description="偏好地区代码，如 cn 或 jp。",
+        json_schema_extra={"label": "偏好地区", "placeholder": "例如 cn"},
+    )
 
 
 class ReaderConfig(PluginConfigBase):
-    __ui_label__ = "正文降级"
-    enabled: bool = Field(default=False, description="正文过短时使用 Reader")
-    url_prefix: str = Field(default="", description="Reader 转换前缀；拼接原 URL；仍经公网检查")
-    min_chars: int = Field(default=100, ge=0, le=2000, description="触发正文降级的字数阈值")
+    __ui_label__ = "网页抓取降级"
+    enabled: bool = Field(
+        default=False,
+        description="普通抓取遇到空白网页或前端动态渲染壳子时，自动换用 Reader 服务提取正文。",
+        json_schema_extra={"label": "启用正文降级"},
+    )
+    url_prefix: str = Field(
+        default="",
+        description="Reader 转换接口前缀，会把目标网页链接拼在后面（同样受内网地址拦截保护）。",
+        json_schema_extra={"label": "Reader 前缀", "placeholder": "https://r.jina.ai/"},
+    )
+    min_chars: int = Field(
+        default=100,
+        ge=0,
+        le=2000,
+        description="抓回来的正文少于多少字时触发降级重抓。",
+        json_schema_extra={"label": "触发降级字数"},
+    )
 
 
 class PeekConfig(PluginConfigBase):
     __ui_label__ = "静默读空气"
-    enabled: bool = Field(default=False, description="后台搜抓并插入客观卡片")
-    trigger: Literal["url", "unknown_term"] = Field(default="url", description="URL 或轻量模型判定新话题")
-    model_task: str = Field(default="", description="轻量模型任务")
-    cooldown_seconds: float = Field(default=600, ge=1, le=86400, description="每会话冷却")
-    max_chars: int = Field(default=500, ge=50, le=2000, description="背景卡片上限")
-    max_pending: int = Field(default=4, ge=1, le=32, description="最多同时后台任务")
-    timeout_seconds: float = Field(default=45, ge=1, le=120, description="后台任务超时")
+    enabled: bool = Field(
+        default=False,
+        description="开启后，在大家聊到链接或陌生新梗时后台悄悄搜一下，把背景卡片塞进上下文里不抢话。",
+        json_schema_extra={"label": "启用被动读空气"},
+    )
+    trigger: Literal["url", "unknown_term"] = Field(
+        default="url",
+        description="url 只在群里发了网页链接时静默抓取；unknown_term 会请轻量模型顺带识别新梗去搜。",
+        json_schema_extra={"label": "触发方式"},
+    )
+    model_task: str = Field(
+        default="",
+        description="用于判断该不该后台搜的小模型任务名，留空用宿主默认模型。",
+        json_schema_extra={"label": "判断模型任务", "placeholder": "例如 utils"},
+    )
+    cooldown_seconds: float = Field(
+        default=600,
+        ge=1,
+        le=86400,
+        description="同一个聊天隔多久才允许再后台读空气搜一次，防止频繁刷额度。",
+        json_schema_extra={"label": "单聊冷却秒数"},
+    )
+    max_chars: int = Field(
+        default=500,
+        ge=50,
+        le=2000,
+        description="塞进聊天上下文里的背景卡片最多保留多少字。",
+        json_schema_extra={"label": "卡片字数上限"},
+    )
+    max_pending: int = Field(
+        default=4,
+        ge=1,
+        le=32,
+        description="最多同时后台任务",
+        json_schema_extra={"label": "后台并发上限", "hidden": True},
+    )
+    timeout_seconds: float = Field(
+        default=45,
+        ge=1,
+        le=120,
+        description="后台任务超时",
+        json_schema_extra={"label": "后台超时秒数", "hidden": True},
+    )
     instruction: str = Field(
-        default='判断这段对话是否谈论新梗、具体新闻且需要背景核实。只返回 JSON：{"query":"需要搜索的词或空字符串"}。对话：',
-        description="轻量判断要求",
+        default='看看这段对话里有没有提到大家可能不太熟的新梗、刚出的作品或具体新闻。需要查一下背景就返回 JSON {"query":"搜索词"}，不需要就返回 {"query":""}。对话：',
+        description="让轻量模型判断是否值得后台查背景的提示语。",
+        json_schema_extra={"label": "判断提示词"},
     )
 
 
@@ -77,28 +200,92 @@ class PluginInfo(PluginConfigBase):
 
 
 class Config(PluginConfigBase):
-    scope: ScopeConfig = Field(default_factory=ScopeConfig, description="独立会话与用户生效范围")
-    show_advanced: bool = Field(default=False, description="显示高级设置")
+    scope: ScopeConfig = Field(default_factory=ScopeConfig, description="独立控制哪些群或人允许用搜索")
+    show_advanced: bool = Field(
+        default=False,
+        description="展开网页降级、被动读空气与缓存超时等高阶选项。",
+        json_schema_extra={"label": "显示高级设置"},
+    )
     plugin: PluginInfo = Field(default_factory=PluginInfo)
-    enabled: bool = Field(default=True, description="启用插件")
+    enabled: bool = Field(
+        default=True,
+        description="零配置即用默认源；配了垂直频道和密钥会更稳更准。",
+        json_schema_extra={"label": "启用搜索"},
+    )
     channels: list[Channel] = Field(
-        default_factory=lambda: [Channel()], description="向模型匿名声明的搜索能力"
+        default_factory=lambda: [Channel()],
+        description="按用途分类编排搜索能力（如游戏攻略、热梗、百科）；模型只能看见这里写的能力名与说明。",
+        json_schema_extra={"label": "搜索能力频道"},
     )
     backends: list[SearchSource] = Field(
-        default_factory=list, description="集中后端凭证池；空使用免 Key 默认链"
+        default_factory=list,
+        description="集中登记搜索源和密钥，各频道按代号复用；留空则直接使用免密钥默认通用源。",
+        json_schema_extra={"label": "引擎凭证池"},
     )
     reader_fallback: ReaderConfig = Field(default_factory=ReaderConfig)
     passive_peek: PeekConfig = Field(default_factory=PeekConfig)
-    sources: list[SearchSource] = Field(default_factory=list, description="搜索源；空时使用默认源")
-    preferred_domains: list[str] = Field(default_factory=list, description="偏好站点")
-    domain_routes: list[DomainRoute] = Field(default_factory=list, description="能力范围与偏好站点条目")
-    timeout_seconds: float = Field(default=8.0, ge=1, le=30, description="单源网络超时")
-    max_results: int = Field(default=5, ge=1, le=20, description="最大结果数")
-    cache_minutes: int = Field(default=30, ge=0, le=1440, description="搜索和正文缓存时间")
-    max_cache_entries: int = Field(default=128, ge=1, le=1000, description="缓存条目上限")
-    max_body_chars: int = Field(default=12000, ge=1000, le=50000, description="正文上限")
-    max_response_bytes: int = Field(default=2000000, ge=1000, le=10000000, description="单次下载字节上限")
-    user_agent: str = Field(default="zeyr-better-search/0.1", description="请求 User-Agent")
+    sources: list[SearchSource] = Field(
+        default_factory=list,
+        description="旧版搜索源兼容字段。",
+        json_schema_extra={"label": "兼容旧搜索源", "hidden": True},
+    )
+    preferred_domains: list[str] = Field(
+        default_factory=list,
+        description="旧版偏好站点兼容字段。",
+        json_schema_extra={"label": "兼容旧站点", "hidden": True},
+    )
+    domain_routes: list[DomainRoute] = Field(
+        default_factory=list,
+        description="旧版能力范围与偏好站点条目兼容字段。",
+        json_schema_extra={"label": "兼容旧路由", "hidden": True},
+    )
+    timeout_seconds: float = Field(
+        default=8.0,
+        ge=1,
+        le=30,
+        description="单个搜索引擎或网页抓取最多等待多少秒后切换备选。",
+        json_schema_extra={"label": "请求超时秒数"},
+    )
+    max_results: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="每次搜索最多取回几条结果。",
+        json_schema_extra={"label": "最多返回条数"},
+    )
+    cache_minutes: int = Field(
+        default=30,
+        ge=0,
+        le=1440,
+        description="同一搜索词和同一网页正文在内存里缓存多少分钟。",
+        json_schema_extra={"label": "结果缓存分钟"},
+    )
+    max_cache_entries: int = Field(
+        default=128,
+        ge=1,
+        le=1000,
+        description="缓存条目上限",
+        json_schema_extra={"label": "缓存条目上限", "hidden": True},
+    )
+    max_body_chars: int = Field(
+        default=12000,
+        ge=1000,
+        le=50000,
+        description="正文上限",
+        json_schema_extra={"label": "正文最大字数", "hidden": True},
+    )
+    max_response_bytes: int = Field(
+        default=2000000,
+        ge=1000,
+        le=10000000,
+        description="单次下载字节上限",
+        json_schema_extra={"label": "下载字节上限", "hidden": True},
+    )
+    user_agent: str = Field(
+        default="zeyr-better-search/0.1",
+        description="请求 User-Agent",
+        json_schema_extra={"label": "请求 UA", "hidden": True},
+    )
     default_sources: list[SearchSource] = Field(
         default_factory=lambda: [
             SearchSource(
@@ -107,6 +294,7 @@ class Config(PluginConfigBase):
             SearchSource(name="bing", kind="bing", endpoint="https://www.bing.com/search?q={query}"),
         ],
         description="零配置搜索源与降级次序",
+        json_schema_extra={"label": "免配兜底链", "hidden": True},
     )
 
     @model_validator(mode="before")
@@ -155,8 +343,6 @@ for _name, _field in Config.model_fields.items():
         }
 Config.model_rebuild(force=True)
 
-
-# SDK labels otherwise fall back to Python field names in top-level sections.
 for _model in list(globals().values()):
     if isinstance(_model, type) and issubclass(_model, PluginConfigBase):
         for _field_name, _field_info in _model.model_fields.items():

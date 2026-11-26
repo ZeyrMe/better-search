@@ -20,7 +20,18 @@
     "min_version": "2.23.0",
     "max_version": "2.23.99"
   },
-  "dependencies": [],
+  "dependencies": [
+    {
+      "type": "python_package",
+      "name": "httpx",
+      "version_spec": "<1,>=0.28"
+    },
+    {
+      "type": "python_package",
+      "name": "beautifulsoup4",
+      "version_spec": "<5,>=4.13"
+    }
+  ],
   "capabilities": [
     "api.get",
     "api.call"

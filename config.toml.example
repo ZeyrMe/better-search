@@ -1,5 +1,12 @@
 # Generated from config_models.py; instance config.toml stays local.
+show_advanced = false
 enabled = true
+sources = []
+preferred_domains = []
+timeout_seconds = 8.0
+max_results = 5
+cache_minutes = 30
+max_body_chars = 12000
 
 [plugin]
 config_version = "0.1.0"

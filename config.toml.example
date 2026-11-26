@@ -1,6 +1,7 @@
 # Generated from config_models.py; instance config.toml stays local.
 show_advanced = false
 enabled = true
+backends = []
 sources = []
 preferred_domains = []
 domain_routes = []
@@ -25,6 +26,31 @@ max_tracked_streams = 256
 
 [plugin]
 config_version = "0.1.0"
+
+[[channels]]
+name = "general"
+desc = "通用互联网资料和实时事实"
+auto_attach = false
+sites = []
+backends = []
+time_range = ""
+lang = ""
+region = ""
+
+[reader_fallback]
+enabled = false
+url_prefix = ""
+min_chars = 100
+
+[passive_peek]
+enabled = false
+trigger = "url"
+model_task = ""
+cooldown_seconds = 600
+max_chars = 500
+max_pending = 4
+timeout_seconds = 45
+instruction = "判断这段对话是否谈论新梗、具体新闻且需要背景核实。只返回 JSON：{\"query\":\"需要搜索的词或空字符串\"}。对话："
 
 [[default_sources]]
 name = "duckduckgo"

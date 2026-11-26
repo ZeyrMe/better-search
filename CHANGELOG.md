@@ -1,3 +1,7 @@
+## 0.2.0 · v2.5 业务增量
+
+Channel 能力频道与 Backend 凭证池分离；同频道顺序故障切换，默认查询可并发附带订阅频道；smart_search 支持 query/category/site/time_range，旧 scope 与 API q 继续兼容。模型结果与错误使用能力名，后台控制台保留后端健康；日期定向采用通用 after: 提示，具体上游可能不严格执行过滤。Reader 通过相同 DNS Pinning/SSRF/字节限制路径降级；passive_peek 默认关闭，开启后后台查资料并追加不可回复的客观卡片。控制台可自检和清缓存。
+
 ## 未发布 · v2.5 Batch 1
 
 - 新增独立 scope、群/私聊身份判定与公共集合软联动。

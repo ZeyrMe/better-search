@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "id": "zeyr.better-search",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "更好的搜索",
   "description": "多引擎搜索与正文抓取",
   "author": {
@@ -34,7 +34,10 @@
   ],
   "capabilities": [
     "api.get",
-    "api.call"
+    "api.call",
+    "llm.generate",
+    "maisaka.context.append",
+    "web.search"
   ],
   "i18n": {
     "default_locale": "zh-CN"

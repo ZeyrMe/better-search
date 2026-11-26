@@ -5,7 +5,7 @@ from maibot_sdk import Field, PluginConfigBase
 
 class SearchSource(PluginConfigBase):
     name: str = Field(default="", description="来源名")
-    kind: Literal["duckduckgo", "bing", "json", "searxng", "brave", "exa"] = Field(
+    kind: Literal["duckduckgo", "bing", "json", "searxng", "brave", "exa", "tavily"] = Field(
         default="json", description="搜索适配器"
     )
     endpoint: str = Field(default="", description="搜索地址模板，支持 {query} 和 {scope}")

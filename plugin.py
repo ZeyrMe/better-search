@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import copy
+import ipaddress
 import json
+import socket
 import time
 from collections import OrderedDict
-from urllib.parse import parse_qs, quote, urlsplit, urlunsplit
+from urllib.parse import parse_qs, quote, urljoin, urlsplit, urlunsplit
 
 import httpx
 from bs4 import BeautifulSoup
@@ -25,10 +27,56 @@ def envelope(data=None, error=""):
     }
 
 
+def public_host(host):
+    host = host.rstrip(".").lower()
+    if (
+        "%" in host
+        or host == "localhost"
+        or host.endswith((".localhost", ".local", ".internal", ".home", ".lan"))
+    ):
+        raise ValueError("禁止访问本地或内网地址")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        if "." not in host:
+            raise ValueError("禁止访问本地名称") from None
+        return
+    if (
+        not address.is_global
+        or address.is_multicast
+        or (getattr(address, "ipv4_mapped", None) and not address.ipv4_mapped.is_global)
+    ):
+        raise ValueError("禁止访问非公网地址")
+
+
+async def pinned_url(url):
+    parsed = urlsplit(canonical_url(url))
+    host = parsed.hostname
+    records = await asyncio.to_thread(
+        socket.getaddrinfo,
+        host,
+        parsed.port or (443 if parsed.scheme == "https" else 80),
+        type=socket.SOCK_STREAM,
+    )
+    if not records:
+        raise ValueError("域名没有可用公网地址")
+    for record in records:
+        public_host(record[4][0])
+    address = records[0][4][0]
+    authority = f"[{address}]" if ":" in address else address
+    if parsed.port:
+        authority += f":{parsed.port}"
+    # Connect to the validated IP to prevent a second DNS lookup/rebinding, retaining TLS SNI and Host.
+    return urlunsplit((parsed.scheme, authority, parsed.path, parsed.query, "")), parsed.netloc, host
+
+
 def canonical_url(value):
     parsed = urlsplit(value)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise ValueError("仅支持有效 http/https 地址")
+    if parsed.username or parsed.password:
+        raise ValueError("地址不能包含用户名或密码")
+    public_host(parsed.hostname)
     query = [
         (k, v)
         for k, values in parse_qs(parsed.query, keep_blank_values=True).items()
@@ -62,7 +110,7 @@ class Plugin(MaiBotPlugin):
         self.client = None
 
     async def on_load(self):
-        self.client = httpx.AsyncClient(follow_redirects=True)
+        self.client = httpx.AsyncClient(follow_redirects=False, trust_env=False)
 
     async def on_unload(self):
         if self.client:
@@ -75,28 +123,45 @@ class Plugin(MaiBotPlugin):
     async def request(self, url, *, headers=None, payload=None):
         canonical_url(url)
         temporary = self.client is None
-        client = self.client or httpx.AsyncClient(follow_redirects=True)
+        client = self.client or httpx.AsyncClient(follow_redirects=False, trust_env=False)
         try:
             async with asyncio.timeout(self.config.timeout_seconds):
-                async with client.stream(
-                    "POST" if payload is not None else "GET",
-                    url,
-                    headers={"User-Agent": self.config.user_agent, **(headers or {})},
-                    json=payload,
-                    timeout=self.config.timeout_seconds,
-                ) as response:
-                    response.raise_for_status()
-                    chunks, size = [], 0
-                    async for chunk in response.aiter_bytes():
-                        size += len(chunk)
-                        if size > self.config.max_response_bytes:
-                            raise ValueError("响应超过下载上限")
-                        chunks.append(chunk)
-                    return (
-                        b"".join(chunks),
-                        response.encoding or "utf-8",
-                        response.headers.get("content-type", ""),
-                    )
+                current = canonical_url(url)
+                for hop in range(6):
+                    pinned, authority, hostname = await pinned_url(current)
+                    async with client.stream(
+                        "POST" if payload is not None else "GET",
+                        pinned,
+                        headers={**(headers or {}), "User-Agent": self.config.user_agent, "Host": authority},
+                        extensions={"sni_hostname": hostname},
+                        json=payload,
+                        timeout=self.config.timeout_seconds,
+                        follow_redirects=False,
+                    ) as response:
+                        if response.status_code in (301, 302, 303, 307, 308):
+                            if hop == 5 or not response.headers.get("location"):
+                                raise ValueError("重定向次数过多或缺少地址")
+                            next_url = canonical_url(urljoin(current, response.headers["location"]))
+                            if (headers or payload is not None) and urlsplit(next_url).netloc != urlsplit(
+                                current
+                            ).netloc:
+                                raise ValueError("携带凭据的请求不允许跨站重定向")
+                            if response.status_code in (301, 302, 303):
+                                payload = None
+                            current = next_url
+                            continue
+                        response.raise_for_status()
+                        chunks, size = [], 0
+                        async for chunk in response.aiter_bytes():
+                            size += len(chunk)
+                            if size > self.config.max_response_bytes:
+                                raise ValueError("响应超过下载上限")
+                            chunks.append(chunk)
+                        return (
+                            b"".join(chunks),
+                            response.encoding or "utf-8",
+                            response.headers.get("content-type", ""),
+                        )
         finally:
             if temporary:
                 await client.aclose()
@@ -199,6 +264,12 @@ class Plugin(MaiBotPlugin):
                     headers["x-api-key"] = source.api_key
                 if source.kind == "exa":
                     payload = {"query": query, "numResults": self.config.max_results}
+                if source.kind == "tavily":
+                    payload = {
+                        "api_key": source.api_key,
+                        "query": query,
+                        "max_results": self.config.max_results,
+                    }
                 body, _, _ = await self.request(url, headers=headers, payload=payload)
                 rows = (
                     self.parse_html_results(body, source.kind, source.name)

@@ -143,7 +143,26 @@ class Plugin(EcosystemMixin, MaiBotPlugin):
         return {"action": "continue"}
 
     def console_text(self):
-        return f"模型能力说明：{self.capability_description()}\n后端健康：{self.health}\n缓存条目：{len(self.cache)}"
+        if self.health:
+            health_parts = []
+            for backend, info in self.health.items():
+                if isinstance(info, dict):
+                    ok = "正常" if info.get("ok") else "异常"
+                    detail = info.get("error") or (
+                        f"返回 {info.get('count', 0)} 条" if info.get("ok") else "连通失败"
+                    )
+                    health_parts.append(f"{backend}（{ok}：{detail}）")
+                else:
+                    health_parts.append(f"{backend}（{info}）")
+            health_line = "、".join(health_parts)
+        else:
+            health_line = "暂未检查（可点击上方“一键后端连通检查”测试）"
+        peek_state = "已开启" if self.config.passive_peek.enabled else "已关闭"
+        return (
+            f"暴露给模型的能力：{self.capability_description()}\n"
+            f"后端健康：{health_line}\n"
+            f"内存缓存：{len(self.cache)} 条 · 静默读空气：{peek_state}"
+        )
 
     async def on_load(self):
         self.client = httpx.AsyncClient(follow_redirects=False, trust_env=False)

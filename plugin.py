@@ -12,9 +12,10 @@ from urllib.parse import parse_qs, quote, urljoin, urlsplit, urlunsplit
 
 import httpx
 from bs4 import BeautifulSoup
-from maibot_sdk import API, MaiBotPlugin, Tool
+from maibot_sdk import API, HookHandler, MaiBotPlugin, Tool
 
 from .config_models import Config
+from .ecosystem import EcosystemMixin
 
 
 def envelope(data=None, error=""):
@@ -101,13 +102,21 @@ def domain_matches(host, domain):
     return bool(domain) and (host == domain or host.endswith("." + domain))
 
 
-class Plugin(MaiBotPlugin):
+class Plugin(EcosystemMixin, MaiBotPlugin):
     config_model = Config
 
     def __init__(self):
         super().__init__()
         self.cache = OrderedDict()
         self.client = None
+
+    @HookHandler("chat.receive.after_process")
+    async def remember_scope(self, message=None, **kwargs):
+        await self.in_scope(message, **kwargs)
+        return {"action": "continue"}
+
+    def console_text(self):
+        return f"搜索后端：{len(self.sources())}；缓存条目：{len(self.cache)}"
 
     async def on_load(self):
         self.client = httpx.AsyncClient(follow_redirects=False, trust_env=False)
@@ -265,7 +274,7 @@ class Plugin(MaiBotPlugin):
         for source in self.sources(query, scope):
             try:
                 url = source.endpoint.format(query=quote(query, safe=""), scope=quote(scope, safe=""))
-                headers, payload = dict(source.headers), None
+                headers, payload = {row.name: row.value for row in source.headers}, None
                 if source.api_key and source.kind == "brave":
                     headers["X-Subscription-Token"] = source.api_key
                 elif source.api_key and source.kind == "exa":
@@ -359,6 +368,8 @@ class Plugin(MaiBotPlugin):
         visibility="visible",
     )
     async def tool_search(self, query, scope="web", **kwargs):
+        if not await self.in_scope(**kwargs):
+            return envelope(error="当前会话不在插件生效范围")
         return await self.api_query(query, scope)
 
     @Tool(
@@ -368,6 +379,8 @@ class Plugin(MaiBotPlugin):
         visibility="visible",
     )
     async def tool_fetch(self, url, **kwargs):
+        if not await self.in_scope(**kwargs):
+            return envelope(error="当前会话不在插件生效范围")
         return await self.api_fetch(url)
 
     @API("query", public=True, version="1")

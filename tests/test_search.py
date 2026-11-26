@@ -202,3 +202,20 @@ async def test_api_credentials_do_not_follow_scheme_or_origin_changes(plugin, mo
         await plugin.on_unload()
     assert len(calls) == 1
     assert calls[0].headers["connection"] == "close"
+
+
+def test_legacy_domain_and_header_config_survives_sdk_normalization():
+    plugin = module.Plugin()
+    plugin.set_plugin_config(
+        {
+            "plugin": {"config_version": "0.1.0"},
+            "scope_domains": {"wiki": ["wiki.example"]},
+            "sources": [{"name": "test", "headers": {"X-Test": "opaque"}}],
+        }
+    )
+    stored = plugin.get_plugin_config_data()
+    assert "scope_domains" not in stored
+    assert stored["domain_routes"] == [{"scope": "wiki", "domains": ["wiki.example"]}]
+    assert stored["sources"][0]["headers"] == [{"name": "X-Test", "value": "opaque"}]
+    plugin.set_plugin_config(stored)
+    assert plugin.config.scope_domains["wiki"] == ["wiki.example"]

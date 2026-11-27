@@ -172,16 +172,16 @@ class Channel(PluginConfigBase):
 
 
 class ReaderConfig(PluginConfigBase):
-    """遇到现代前端单页应用（普通抓取只拿到空 HTML 壳子、有效正文很少）时，改用外部 Reader 接口提取干净正文。所有 Reader 请求同样受公网 IP / SSRF 防护校验。"""
+    """普通抓取拿到的正文较少时（例如前端动态渲染页面），可改用外部 Reader 服务提取正文。所有请求均受公网地址与容量限制保护。"""
 
-    __ui_label__ = "网页抓取降级"
+    __ui_label__ = "网页正文提取"
     enabled: bool = Field(
         default=False,
-        description="普通抓取正文少于阈值字数时，自动走 Reader 服务重抓一次。",
+        description="普通抓取正文少于阈值字数时，改用 Reader 服务重抓。",
         json_schema_extra={
-            "label": "启用正文降级",
+            "label": "启用正文提取",
             "order": 1,
-            "hint": "默认关闭；经常抓到空白动态页面（如部分新闻站、Wiki、社区帖）时可以开启。",
+            "hint": "默认关闭；经常抓取到空白动态页面时可开启。",
         },
     )
     url_prefix: str = Field(
@@ -208,29 +208,29 @@ class ReaderConfig(PluginConfigBase):
 
 
 class PeekConfig(PluginConfigBase):
-    """「边读空气边查」可选后台能力：开启后在群里丢出网页链接、或大家聊起陌生新梗时，异步在后台悄悄查一下，再把客观背景卡塞进聊天上下文（不抢话、不阻塞正常回复）。"""
+    """收到网页链接或聊天提及陌生词时，异步在后台抓取或搜索背景资料写入上下文，不打断正常对话。"""
 
-    __ui_label__ = "静默读空气"
+    __ui_label__ = "后台自动搜索"
     enabled: bool = Field(
         default=False,
-        description="开启后由后台悄悄搜抓并往当前上下文插入客观背景卡。",
+        description="开启后根据聊天内容自动在后台搜索或抓取背景资料写入上下文。",
         json_schema_extra={
-            "label": "启用被动读空气",
+            "label": "启用后台搜索",
             "order": 1,
-            "hint": "默认关闭（平时直接靠模型主动调用 smart_search 就够用）；想让 Bot 在没开口时自己先偷偷看链接或补新梗背景可以开启。",
+            "hint": "默认关闭（通常由模型按需调用 smart_search 即可）；需要提前补充链接或新词背景时开启。",
         },
     )
     trigger: Literal["url", "unknown_term"] = Field(
         default="url",
-        description="决定什么情况触发后台悄悄查一次。",
+        description="决定什么情况触发后台自动搜索。",
         json_schema_extra={
             "label": "触发方式",
             "order": 2,
             "enum_labels": {
-                "url": "url（省额度：只在有人发 HTTP 链接时后台预抓取标题和正文）",
-                "unknown_term": "unknown_term（请小模型边读聊天边挑需要查的新梗/新闻）",
+                "url": "url（仅在消息包含 HTTP 链接时抓取标题和正文）",
+                "unknown_term": "unknown_term（由小模型判断消息中是否有需要查背景的新词）",
             },
-            "hint": "url 零模型开销；unknown_term 每段对话可能调一次指定小模型判断是否值得查。",
+            "hint": "url 模式不消耗模型额度；unknown_term 会调用指定小模型判断是否值得搜索。",
         },
     )
     model_task: str = Field(
@@ -247,7 +247,7 @@ class PeekConfig(PluginConfigBase):
         default=600,
         ge=1,
         le=86400,
-        description="同一个聊天隔多久才允许再后台读空气搜一次。",
+        description="同一个会话间隔多少秒才允许再次后台自动搜索。",
         json_schema_extra={
             "label": "单聊冷却秒数",
             "order": 4,
@@ -298,39 +298,39 @@ class Config(PluginConfigBase):
     scope: ScopeConfig = Field(default_factory=ScopeConfig, description="独立控制哪些群或人允许用搜索")
     show_advanced: bool = Field(
         default=False,
-        description="展开网页降级、被动读空气与缓存超时等高阶选项。",
+        description="展开网页正文提取、后台自动搜索与缓存超时等高阶选项。",
         json_schema_extra={
             "label": "显示高级设置",
             "order": 9,
-            "hint": "新手留空“引擎凭证池”即可用免密钥默认源直接搜索；需要调超时、缓存或开启网页降级/读空气时打开。",
+            "hint": "不配搜索引擎也可使用免密钥默认源直接搜索；需要调超时、缓存或开启网页提取/后台搜索时再展开。",
         },
     )
     plugin: PluginInfo = Field(default_factory=PluginInfo)
     enabled: bool = Field(
         default=True,
-        description="零配置即用默认源；配了垂直频道和密钥会更稳更准。",
+        description="开启后可使用多源联网搜索与网页正文抓取。",
         json_schema_extra={
             "label": "启用搜索",
             "order": 1,
-            "hint": "为防止和宿主自带旧 web_search 双工具冲突，切换使用本插件时建议清空 model_config.toml 中的 web_search 模型任务。",
+            "hint": "为避免与宿主自带搜索工具重复，切换使用本插件时建议清空 model_config.toml 中的 web_search 任务。",
         },
     )
     channels: list[Channel] = Field(
         default_factory=lambda: [Channel()],
-        description="按用途分类编排搜索能力；模型只能看见这里写的能力代号与说明。",
+        description="按用途分类配置搜索频道；模型只看到频道代号与说明。",
         json_schema_extra={
-            "label": "搜索能力频道",
+            "label": "搜索频道",
             "order": 2,
-            "hint": "建垂直频道（如 game 游戏攻略、meme 热梗、wiki 百科）时，哪怕不填“指定后端”，只要填好“限定网站”，也会自动用默认搜索引擎拼 site: 定向查询！打开“默认顺带查”则平时搜 general 时会自动带上它。",
+            "hint": "新建垂直频道（如 game、wiki）并填写限定网站后，会自动使用通用后端拼接 site: 检索；勾选默认顺带查则在常规搜索时并发查询。",
         },
     )
     backends: list[SearchSource] = Field(
         default_factory=list,
-        description="集中登记搜索源和密钥，各频道按代号复用；留空直接使用免密钥默认通用源。",
+        description="集中配置搜索接口与密钥，各频道按代号复用；留空则使用默认免密钥搜索。",
         json_schema_extra={
-            "label": "引擎凭证池",
+            "label": "搜索引擎配置",
             "order": 3,
-            "hint": "可选填（留空也能搜）。推荐添加 1 个稳定付费或自建源（如 tavily / searxng / host_web）并写到频道的“指定后端”；配置完记得在上方点“一键后端连通检查”。",
+            "hint": "留空也可直接使用；推荐配置稳定的后端（如 tavily / searxng / host_web）并在控制台测试连通性。",
         },
     )
     reader_fallback: ReaderConfig = Field(default_factory=ReaderConfig)

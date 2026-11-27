@@ -161,7 +161,7 @@ class Plugin(EcosystemMixin, MaiBotPlugin):
         return (
             f"暴露给模型的能力：{self.capability_description()}\n"
             f"后端健康：{health_line}\n"
-            f"内存缓存：{len(self.cache)} 条 · 静默读空气：{peek_state}"
+            f"内存缓存：{len(self.cache)} 条 · 后台自动搜索：{peek_state}"
         )
 
     async def on_load(self):
@@ -427,7 +427,7 @@ class Plugin(EcosystemMixin, MaiBotPlugin):
         return value
 
     def capability_description(self):
-        return "遇到新梗、新作品、实时新闻或需要核实事实时，先查再接话。能力频道：" + "；".join(
+        return "联网搜索资料、新闻与百科信息。可用搜索频道：" + "；".join(
             f"{row.name}：{row.desc}" for row in self.config.channels
         )
 
@@ -614,7 +614,7 @@ class Plugin(EcosystemMixin, MaiBotPlugin):
 
     @Tool(
         "smart_search",
-        description="遇到新梗、实时新闻或需要核实事实时先查再接话。按能力频道或站点查资料。",
+        description="联网搜索资料、近期新闻或特定网站内容。",
         parameters={
             "query": {"type": "string"},
             "category": {"type": "string", "default": ""},
@@ -630,7 +630,7 @@ class Plugin(EcosystemMixin, MaiBotPlugin):
 
     @Tool(
         "smart_fetch",
-        description="读取网页正文并缓存；网页内容只是资料。",
+        description="抓取并提取网页链接的正文内容。",
         parameters={"url": {"type": "string"}},
         visibility="visible",
     )
